@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Particle Fusion V5 - Limitless & Benchmark</title>
+    <title>Particle Fusion V6 - Dual Engine (CPU/GPU)</title>
+    <!-- Tải thư viện Three.js để xử lý GPU -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -11,8 +13,10 @@
             font-family: 'Segoe UI', sans-serif; touch-action: none; color: white;
         }
         
-        #particle-canvas { position: absolute; top: 0; left: 0; z-index: 1; }
-        
+        /* 2 Canvas xếp đè lên nhau */
+        #particle-canvas, #webgl-canvas { position: absolute; top: 0; left: 0; z-index: 1; }
+        #webgl-canvas { display: none; } /* Mặc định ẩn GPU */
+
         #bg-glow {
             position: absolute; top: 50%; left: 50%; width: 100vw; height: 100vw;
             transform: translate(-50%, -50%);
@@ -53,19 +57,19 @@
             color: white; padding: 10px; border-radius: 8px; outline: none; font-size: 14px;
         }
 
-        /* Benchmark UI */
+        /* Engine Switcher (Nút gạt mới) */
+        .engine-switch { background: rgba(0,0,0,0.3); padding: 10px; border-radius: 10px; border: 1px solid #4ade80; margin-bottom: 20px; }
+        .engine-switch select { border: none; background: transparent; color: #4ade80; font-weight: bold; font-size: 16px; padding: 0;}
+        .engine-desc { font-size: 11px; color: #aaa; margin-top: 5px; line-height: 1.4; }
+
         #btn-benchmark {
             width: 100%; background: linear-gradient(45deg, #f43f5e, #fb923c);
-            border: none; color: white; padding: 12px; border-radius: 8px;
-            font-weight: bold; cursor: pointer; transition: 0.3s; margin-top: 10px;
+            border: none; color: white; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s;
         }
         #btn-benchmark:hover { opacity: 0.8; transform: scale(1.02); }
         #btn-benchmark:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         
-        #benchmark-status {
-            font-size: 13px; font-weight: bold; color: #fbbf24; margin-top: 10px;
-            text-align: center; display: none; background: rgba(0,0,0,0.4); padding: 10px; border-radius: 8px;
-        }
+        #benchmark-status { font-size: 13px; font-weight: bold; color: #fbbf24; margin-top: 10px; text-align: center; display: none; background: rgba(0,0,0,0.4); padding: 10px; border-radius: 8px;}
 
         /* UI Main Bottom */
         #ui-container {
@@ -74,27 +78,17 @@
             flex-wrap: wrap; justify-content: center; width: max-content; max-width: 95vw; align-items: center;
         }
 
-        .btn {
-            background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);
-            color: white; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center;
-        }
+        .btn { background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: white; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; }
         .btn-emoji { font-size: 20px; width: 45px; height: 45px; border-radius: 50%; }
         .btn-action { font-size: 14px; padding: 0 15px; height: 45px; border-radius: 22.5px; font-weight: bold; }
         .btn:hover { background: rgba(255, 255, 255, 0.25); transform: translateY(-3px); }
 
-        #text-input {
-            height: 45px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2);
-            color: white; padding: 0 15px; border-radius: 22.5px; outline: none; font-size: 14px;
-            min-width: 140px; transition: 0.3s;
-        }
+        #text-input { height: 45px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 0 15px; border-radius: 22.5px; outline: none; font-size: 14px; min-width: 140px; transition: 0.3s; }
         #text-input:focus { border-color: #4ade80; width: 180px; }
 
         #image-upload { display: none; }
         #instruction { position: absolute; top: 35px; left: 80px; z-index: 10; pointer-events: none; opacity: 0.5; font-size: 14px; }
-        #overlay {
-            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0,0,0,0.5); z-index: 25; display: none; opacity: 0; transition: 0.3s;
-        }
+        #overlay { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 25; display: none; opacity: 0; transition: 0.3s; }
 
         @media (max-width: 600px) {
             #instruction { display: none; }
@@ -108,24 +102,36 @@
 <body>
 
     <div id="bg-glow"></div>
-    <canvas id="particle-canvas"></canvas>
-    <div id="overlay"></div>
     
-    <div id="instruction">← Menu: Tăng độ nét (Tối đa 100.000 hạt) & Test hiệu năng máy</div>
+    <!-- 2 Engine Canvas -->
+    <canvas id="particle-canvas"></canvas> 
+    <canvas id="webgl-canvas"></canvas>
+
+    <div id="overlay"></div>
+    <div id="instruction">← Menu: Đổi lõi CPU/GPU & Cài đặt</div>
 
     <div id="menu-btn" class="glass"><span></span><span></span><span></span></div>
 
     <div id="sidebar" class="glass">
-        <div class="sidebar-title">⚙️ Cài đặt & Hiệu năng</div>
+        <div class="sidebar-title">⚙️ Trung tâm điều khiển</div>
+
+        <!-- BỘ CHUYỂN ĐỔI ENGINE -->
+        <div class="control-group engine-switch">
+            <select id="engine-mode">
+                <option value="cpu">⚡ Lõi CPU (Canvas 2D)</option>
+                <option value="gpu">🚀 Lõi GPU (WebGL 3D)</option>
+            </select>
+            <div class="engine-desc" id="engine-desc">
+                Đang dùng CPU: Có hiệu ứng mờ ảo đẹp mắt, tiết kiệm pin, hợp với < 10.000 hạt.
+            </div>
+        </div>
         
         <div class="control-group">
             <label>
                 <span>Độ nét (Số hạt max):</span>
                 <span id="particle-count-display">8500</span>
             </label>
-            <!-- Giới hạn max đã được tăng lên 100,000 -->
             <input type="range" id="particle-slider" min="2000" max="100000" step="1000" value="8500">
-            <small style="font-size: 11px; color: #888; display: block; margin-top: 5px;">*Kéo cao giúp nét căng nhưng có thể gây giật lag trên máy yếu.</small>
         </div>
 
         <div class="control-group">
@@ -142,8 +148,7 @@
         <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
         
         <div class="control-group">
-            <label style="color:#f43f5e">🔥 Công cụ nâng cao:</label>
-            <button id="btn-benchmark">🧪 Đo giới hạn thiết bị (Stress Test)</button>
+            <button id="btn-benchmark">🧪 Stress Test (Tìm giới hạn máy)</button>
             <div id="benchmark-status"></div>
         </div>
     </div>
@@ -158,120 +163,171 @@
     </div>
 
     <script>
-        const canvas = document.getElementById('particle-canvas');
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        // --- KHỞI TẠO BIẾN CHO CẢ 2 ENGINE ---
+        const canvas2d = document.getElementById('particle-canvas');
+        const ctx = canvas2d.getContext('2d', { willReadFrequently: true });
+        const canvasGL = document.getElementById('webgl-canvas');
         const glowBg = document.getElementById('bg-glow');
 
-        const menuBtn = document.getElementById('menu-btn');
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('overlay');
-        let menuOpen = false;
-
-        function toggleMenu() {
-            menuOpen = !menuOpen;
-            sidebar.classList.toggle('open');
-            if (menuOpen) {
-                overlay.style.display = 'block'; setTimeout(() => overlay.style.opacity = '1', 10);
-            } else {
-                overlay.style.opacity = '0'; setTimeout(() => overlay.style.display = 'none', 300);
-            }
-        }
-        menuBtn.addEventListener('click', toggleMenu); overlay.addEventListener('click', toggleMenu);
-
-        // --- HỆ THỐNG BIẾN TOÀN CỤC ---
+        let currentEngine = 'cpu'; // Mặc định CPU
         const BASE_PARTICLES = 2500; 
+        const ABSOLUTE_MAX_PARTICLES = 100000;
         let MAX_PARTICLES = parseInt(document.getElementById('particle-slider').value); 
         let particles = [];
+        let currentRenderState = null;
+
+        // --- BIẾN THREE.JS (GPU) ---
+        let scene, camera, renderer, gpuGeometry, gpuMaterial, gpuPoints;
+
+        // --- TƯƠNG TÁC CHUỘT ---
         let isMouseDown = false;
         let mouseMode = document.getElementById('mouse-mode').value; 
         let blackHoleForce = 0;
         const mouse = { x: -1000, y: -1000, radius: 100 };
-        let currentRenderState = null;
 
-        // --- CÁC BIẾN CHO BENCHMARK ---
-        let isBenchmarking = false;
-        let lastTime = 0;
-        let frameCount = 0;
-        let currentFPS = 60;
-        let fpsDropsCount = 0; // Đếm số lần FPS tụt liên tiếp để kết luận lag
+        // --- KHỞI TẠO GPU (THREE.JS) ---
+        function initGPU() {
+            scene = new THREE.Scene();
+            // Khớp tọa độ 3D y hệt với tọa độ 2D Canvas
+            camera = new THREE.OrthographicCamera(0, window.innerWidth, 0, window.innerHeight, 0.1, 1000);
+            camera.position.z = 10;
 
-        const Sound = {
-            ctx: null,
-            init() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); },
-            playSwoosh() {
-                if (!this.ctx || isBenchmarking) return; // Tắt tiếng khi đang test
-                const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
-                osc.type = 'sine'; osc.frequency.setValueAtTime(400, this.ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.5);
-                gain.gain.setValueAtTime(0.1, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
-                osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.5);
-            },
-            playPop() {
-                if (!this.ctx || isBenchmarking) return;
-                const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
-                osc.type = 'triangle'; osc.frequency.setValueAtTime(800, this.ctx.currentTime);
-                gain.gain.setValueAtTime(0.1, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
-                osc.connect(gain); gain.connect(this.ctx.destination); osc.start(); osc.stop(this.ctx.currentTime + 0.1);
+            renderer = new THREE.WebGLRenderer({ canvas: canvasGL, alpha: true, antialias: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            gpuGeometry = new THREE.BufferGeometry();
+            let positions = new Float32Array(ABSOLUTE_MAX_PARTICLES * 3);
+            let colors = new Float32Array(ABSOLUTE_MAX_PARTICLES * 3);
+            let sizes = new Float32Array(ABSOLUTE_MAX_PARTICLES);
+
+            gpuGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            gpuGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            gpuGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+            // Shader siêu nhẹ để vẽ hình tròn với kích thước tùy biến cho GPU
+            gpuMaterial = new THREE.ShaderMaterial({
+                vertexShader: `
+                    attribute float size; attribute vec3 color; varying vec3 vColor;
+                    void main() {
+                        vColor = color; vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = size; gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vColor;
+                    void main() {
+                        vec2 xy = gl_PointCoord.xy - vec2(0.5);
+                        if(length(xy) > 0.5) discard; // Cắt thành hình tròn
+                        gl_FragColor = vec4(vColor, 0.8);
+                    }
+                `,
+                transparent: true, depthWrite: false
+            });
+
+            gpuPoints = new THREE.Points(gpuGeometry, gpuMaterial);
+            scene.add(gpuPoints);
+        }
+        initGPU();
+
+        // --- MENU LOGIC ---
+        const menuBtn = document.getElementById('menu-btn');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('overlay');
+        function toggleMenu() {
+            sidebar.classList.toggle('open');
+            if (sidebar.classList.contains('open')) { overlay.style.display = 'block'; setTimeout(() => overlay.style.opacity = '1', 10); } 
+            else { overlay.style.opacity = '0'; setTimeout(() => overlay.style.display = 'none', 300); }
+        }
+        menuBtn.addEventListener('click', toggleMenu); overlay.addEventListener('click', toggleMenu);
+
+        // --- ĐỔI ENGINE (CHÌA KHÓA V6) ---
+        document.getElementById('engine-mode').addEventListener('change', e => {
+            currentEngine = e.target.value;
+            const desc = document.getElementById('engine-desc');
+            if (currentEngine === 'cpu') {
+                canvas2d.style.display = 'block';
+                canvasGL.style.display = 'none';
+                desc.innerHTML = "Đang dùng CPU: Có hiệu ứng mờ ảo đẹp mắt, tiết kiệm pin, hợp với < 10.000 hạt.";
+            } else {
+                canvas2d.style.display = 'none';
+                canvasGL.style.display = 'block';
+                desc.innerHTML = "Đang dùng GPU (WebGL): Sức mạnh siêu tốc, cực nét, gánh 100.000 hạt không lag (Có thể ấm máy).";
             }
-        };
+        });
 
-        function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; if(!isBenchmarking) renderCurrentState(); }
-        window.addEventListener('resize', resizeCanvas); 
-        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-
+        // --- SỰ KIỆN RESIZE & INPUT ---
+        function resizeCanvas() { 
+            canvas2d.width = window.innerWidth; canvas2d.height = window.innerHeight;
+            camera.right = window.innerWidth; camera.bottom = window.innerHeight;
+            camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
+            renderCurrentState(); 
+        }
+        window.addEventListener('resize', resizeCanvas); resizeCanvas();
         window.addEventListener('mousemove', e => { mouse.x = e.x; mouse.y = e.y; });
         window.addEventListener('touchmove', e => { mouse.x = e.touches[0].clientX; mouse.y = e.touches[0].clientY; });
-        window.addEventListener('mousedown', () => { isMouseDown = true; Sound.init(); });
-        window.addEventListener('mouseup', () => { isMouseDown = false; if (mouseMode === 'blackhole' && !isBenchmarking) releaseBlackHole(); });
-        window.addEventListener('touchstart', () => { isMouseDown = true; Sound.init(); });
-        window.addEventListener('touchend', () => { isMouseDown = false; if (mouseMode === 'blackhole' && !isBenchmarking) releaseBlackHole(); });
+        window.addEventListener('mousedown', () => { isMouseDown = true; });
+        window.addEventListener('mouseup', () => { isMouseDown = false; if (mouseMode === 'blackhole') releaseBlackHole(); });
+        window.addEventListener('touchstart', () => { isMouseDown = true; });
+        window.addEventListener('touchend', () => { isMouseDown = false; if (mouseMode === 'blackhole') releaseBlackHole(); });
         
         document.getElementById('mouse-mode').addEventListener('change', e => mouseMode = e.target.value);
         document.getElementById('particle-slider').addEventListener('input', e => {
             document.getElementById('particle-count-display').innerText = new Intl.NumberFormat().format(e.target.value);
         });
         document.getElementById('particle-slider').addEventListener('change', e => {
-            MAX_PARTICLES = parseInt(e.target.value);
-            renderCurrentState();
+            MAX_PARTICLES = parseInt(e.target.value); renderCurrentState();
         });
 
+        // --- CẤU TRÚC HẠT (CHUNG CHO CẢ CPU & GPU) ---
         class Particle {
             constructor() {
-                this.x = Math.random() * canvas.width; this.y = Math.random() * canvas.height;
+                this.x = Math.random() * canvas2d.width; this.y = Math.random() * canvas2d.height;
                 this.originX = this.x; this.originY = this.y;
+                
                 this.wanderAngle = Math.random() * Math.PI * 2; this.wanderSpeed = Math.random() * 0.02;
                 this.wanderRadius = Math.random() * 1 + 0.5; 
                 this.targetSize = this.wanderRadius; this.currentSize = this.wanderRadius;
-                this.color = 'rgba(255, 255, 255, 0.2)'; this.targetColor = this.color;
+                
+                // Lưu r, g, b riêng biệt để cấp cho mảng GPU
+                this.r = 255; this.g = 255; this.b = 255;
+                this.targetR = 255; this.targetG = 255; this.targetB = 255;
+                
                 this.vx = 0; this.vy = 0; this.ease = 0.04 + Math.random() * 0.06;
                 this.isWandering = true;
             }
-            setTarget(x, y, color, stepSize) {
-                this.originX = x; this.originY = y; this.targetColor = color;
+            setTarget(x, y, r, g, b, stepSize) {
+                this.originX = x; this.originY = y; 
+                this.targetR = r; this.targetG = g; this.targetB = b;
                 let dynamicRadius = (stepSize * 0.6) + (Math.random() * 0.4); 
                 this.targetSize = Math.max(dynamicRadius, 1.5); 
                 this.isWandering = false;
             }
             setWander() {
-                this.isWandering = true; this.targetColor = 'rgba(255, 255, 255, 0.2)'; this.targetSize = this.wanderRadius;
+                this.isWandering = true; 
+                this.targetR = 255; this.targetG = 255; this.targetB = 255;
+                this.targetSize = this.wanderRadius;
             }
             applyShockwave(cx, cy) {
                 let dx = this.x - cx; let dy = this.y - cy; let dist = Math.hypot(dx, dy) || 1; 
-                let force = (canvas.width / 2) / dist;
+                let force = (canvas2d.width / 2) / dist;
                 this.vx += (dx / dist) * force * (Math.random() * 3); this.vy += (dy / dist) * force * (Math.random() * 3);
             }
-            update() {
+            updatePhysics() {
+                // Nội suy (LERP) size và màu mượt mà
                 this.currentSize += (this.targetSize - this.currentSize) * 0.15;
-                this.color = this.targetColor;
+                this.r += (this.targetR - this.r) * 0.1;
+                this.g += (this.targetG - this.g) * 0.1;
+                this.b += (this.targetB - this.b) * 0.1;
+
                 this.x += this.vx; this.y += this.vy; this.vx *= 0.82; this.vy *= 0.82; 
 
                 if (this.isWandering) {
                     this.wanderAngle += this.wanderSpeed;
                     this.x += Math.cos(this.wanderAngle) * 0.5; this.y += Math.sin(this.wanderAngle) * 0.5;
-                    if(this.x < 0) this.x = canvas.width; if(this.x > canvas.width) this.x = 0;
-                    if(this.y < 0) this.y = canvas.height; if(this.y > canvas.height) this.y = 0;
-                } else if (!isBenchmarking) { 
-                    // Tắt tương tác chuột khi đang stress test để đo hiệu năng thuần túy
+                    if(this.x < 0) this.x = canvas2d.width; if(this.x > canvas2d.width) this.x = 0;
+                    if(this.y < 0) this.y = canvas2d.height; if(this.y > canvas2d.height) this.y = 0;
+                } else {
                     let dx = mouse.x - this.x; let dy = mouse.y - this.y;
                     let distance = Math.hypot(dx, dy);
 
@@ -299,19 +355,18 @@
                     }
                 }
             }
-            draw() {
-                ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(this.x, this.y, this.currentSize, 0, Math.PI * 2); ctx.fill();
+            draw2D() {
+                ctx.fillStyle = `rgba(${~~this.r}, ${~~this.g}, ${~~this.b}, 0.8)`; 
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.currentSize, 0, Math.PI * 2); ctx.fill();
             }
         }
 
         for (let i = 0; i < BASE_PARTICLES; i++) particles.push(new Particle());
 
-        function releaseBlackHole() {
-            if (blackHoleForce > 0) { Sound.playPop(); particles.forEach(p => p.applyShockwave(mouse.x, mouse.y)); blackHoleForce = 0; }
-        }
+        function releaseBlackHole() { if (blackHoleForce > 0) { particles.forEach(p => p.applyShockwave(mouse.x, mouse.y)); blackHoleForce = 0; } }
 
+        // --- XỬ LÝ ẢNH CHUNG ---
         function extractPixels(sourceCanvas, ctxHidden) {
-            if(isBenchmarking) return;
             const imageData = ctxHidden.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
             const pixels = imageData.data; let points = []; let totalPixels = 0;
             
@@ -326,7 +381,7 @@
                     if (pixels[index + 3] > 50) { 
                         const r = pixels[index], g = pixels[index+1], b = pixels[index+2];
                         rSum += r; gSum += g; bSum += b; count++;
-                        points.push({ x, y, color: `rgba(${r},${g},${b},1)` });
+                        points.push({ x, y, r, g, b });
                     }
                 }
             }
@@ -343,152 +398,90 @@
             let requiredParticles = Math.max(points.length, BASE_PARTICLES);
             if (particles.length > requiredParticles) particles.splice(requiredParticles, particles.length - requiredParticles);
 
-            particles.forEach(p => p.applyShockwave(canvas.width/2, canvas.height/2));
-            Sound.playSwoosh();
+            particles.forEach(p => p.applyShockwave(canvas2d.width/2, canvas2d.height/2));
 
             for (let i = 0; i < particles.length; i++) {
-                if (i < points.length) particles[i].setTarget(points[i].x, points[i].y, points[i].color, step);
+                if (i < points.length) particles[i].setTarget(points[i].x, points[i].y, points[i].r, points[i].g, points[i].b, step);
                 else particles[i].setWander();
             }
         }
 
         function renderCurrentState() {
-            if (!currentRenderState || isBenchmarking) return;
-            const hCanvas = document.createElement('canvas'); hCanvas.width = canvas.width; hCanvas.height = canvas.height;
+            if (!currentRenderState) return;
+            const hCanvas = document.createElement('canvas'); hCanvas.width = canvas2d.width; hCanvas.height = canvas2d.height;
             const hCtx = hCanvas.getContext('2d');
-
             if (currentRenderState.type === 'emoji') {
-                hCtx.font = `${Math.min(canvas.width, canvas.height)*0.4}px sans-serif`; hCtx.textAlign = 'center'; hCtx.textBaseline = 'middle';
-                hCtx.fillText(currentRenderState.data, canvas.width/2, canvas.height/2);
+                hCtx.font = `${Math.min(canvas2d.width, canvas2d.height)*0.4}px sans-serif`; hCtx.textAlign = 'center'; hCtx.textBaseline = 'middle';
+                hCtx.fillText(currentRenderState.data, canvas2d.width/2, canvas2d.height/2);
+            } else if (currentRenderState.type === 'image') {
+                let img = currentRenderState.data; let scale = Math.min((canvas2d.width*0.8)/img.width, (canvas2d.height*0.8)/img.height);
+                let w = img.width * scale; let h = img.height * scale; let dx = (canvas2d.width - w)/2; let dy = (canvas2d.height - h)/2;
+                hCtx.drawImage(img, dx, dy, w, h);
             } else if (currentRenderState.type === 'text') {
-                let fontSize = Math.min(canvas.width, canvas.height) * 0.25; hCtx.font = `900 ${fontSize}px 'Segoe UI'`;
-                let textWidth = hCtx.measureText(currentRenderState.data).width; let maxWidth = canvas.width * 0.9; 
+                let fontSize = Math.min(canvas2d.width, canvas2d.height) * 0.25; hCtx.font = `900 ${fontSize}px 'Segoe UI'`;
+                let textWidth = hCtx.measureText(currentRenderState.data).width; let maxWidth = canvas2d.width * 0.9; 
                 if (textWidth > maxWidth) { fontSize = fontSize * (maxWidth / textWidth); hCtx.font = `900 ${fontSize}px 'Segoe UI'`; }
                 hCtx.textAlign = 'center'; hCtx.textBaseline = 'middle'; hCtx.fillStyle = '#4ade80';
-                hCtx.fillText(currentRenderState.data, canvas.width/2, canvas.height/2);
-            } else if (currentRenderState.type === 'image') {
-                let img = currentRenderState.data; let scale = Math.min((canvas.width*0.8)/img.width, (canvas.height*0.8)/img.height);
-                let w = img.width * scale; let h = img.height * scale; let dx = (canvas.width - w)/2; let dy = (canvas.height - h)/2;
-                hCtx.drawImage(img, dx, dy, w, h);
+                hCtx.fillText(currentRenderState.data, canvas2d.width/2, canvas2d.height/2);
             }
             extractPixels(hCanvas, hCtx);
         }
 
-        // --- MODULE BENCHMARK CHUYÊN SÂU ---
-        document.getElementById('btn-benchmark').addEventListener('click', () => {
-            if(isBenchmarking) return;
-            isBenchmarking = true;
-            fpsDropsCount = 0;
+        // --- VÒNG LẶP CHUNG (DUAL CORE) ---
+        function animate() {
+            let positions = gpuGeometry.attributes.position.array;
+            let colors = gpuGeometry.attributes.color.array;
+            let sizes = gpuGeometry.attributes.size.array;
             
-            document.getElementById('btn-benchmark').disabled = true;
-            const statusText = document.getElementById('benchmark-status');
-            statusText.style.display = 'block';
-            statusText.style.color = '#fbbf24';
-            statusText.innerText = 'Đang khởi động Stress Test...';
-
-            // Xóa hết trạng thái hiện tại, đưa về dạng bay tự do
-            particles = [];
-            for (let i = 0; i < 2000; i++) particles.push(new Particle());
-            glowBg.style.background = 'none';
-        });
-
-        // --- VÒNG LẶP ANIMATION CÓ ĐO FPS ---
-        function animate(timestamp) {
-            // Tính toán FPS mỗi nửa giây (500ms)
-            if (!lastTime) lastTime = timestamp;
-            let delta = timestamp - lastTime;
-            frameCount++;
-            
-            if (delta >= 500) {
-                currentFPS = Math.round((frameCount * 1000) / delta);
-                frameCount = 0;
-                lastTime = timestamp;
-                
-                // Thuật toán Benchmark
-                if (isBenchmarking) {
-                    const statusText = document.getElementById('benchmark-status');
-                    
-                    if (currentFPS >= 24 && particles.length < 100000) {
-                        // FPS ổn định -> Bơm thêm hạt
-                        let addAmount = particles.length < 20000 ? 2000 : 5000; // Càng lên cao bơm càng nhanh
-                        for (let i = 0; i < addAmount; i++) {
-                            if (particles.length >= 100000) break;
-                            particles.push(new Particle());
-                        }
-                        statusText.innerHTML = `⏳ Đang Test: <span style="color:#fff">${new Intl.NumberFormat().format(particles.length)}</span> hạt<br>Độ mượt: ${currentFPS} FPS`;
-                        fpsDropsCount = 0; // Reset bộ đếm lag
-                    } else {
-                        // FPS dưới 24 (lag) HOẶC đạt đỉnh 100k
-                        fpsDropsCount++;
-                        if (fpsDropsCount >= 2 || particles.length >= 100000) {
-                            // Kết thúc Test
-                            isBenchmarking = false;
-                            document.getElementById('btn-benchmark').disabled = false;
-                            
-                            // Giảm lại một nấc để đảm bảo an toàn thực tế
-                            let safeLimit = particles.length >= 100000 ? 100000 : Math.max(2000, particles.length - 2000);
-                            
-                            statusText.style.color = '#4ade80';
-                            statusText.innerHTML = `✅ Hoàn tất!<br>Thiết bị chịu được tối đa: <b>${new Intl.NumberFormat().format(safeLimit)}</b> hạt.`;
-                            
-                            // Áp dụng cấu hình an toàn cho UI
-                            MAX_PARTICLES = safeLimit;
-                            document.getElementById('particle-slider').value = safeLimit;
-                            document.getElementById('particle-count-display').innerText = new Intl.NumberFormat().format(safeLimit);
-                            
-                            // Tự động khôi phục ảnh/chữ đang hiển thị (nếu có) sau 3 giây
-                            setTimeout(() => {
-                                statusText.style.display = 'none';
-                                renderCurrentState();
-                            }, 3500);
-                        }
-                    }
-                }
-            }
-
-            ctx.fillStyle = 'rgba(5, 9, 20, 0.4)'; 
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Bỏ qua nối dây khi Benchmark để kiểm tra thuần túy sức mạnh xử lý số lượng
-            if (!isBenchmarking) {
-                ctx.lineWidth = 0.5;
-                let wanderers = particles.filter(p => p.isWandering);
-                let maxLineChecks = Math.min(wanderers.length, 100);
-                for (let i = 0; i < maxLineChecks; i++) {
-                    for (let j = i + 1; j < maxLineChecks; j++) {
-                        let dx = wanderers[i].x - wanderers[j].x; let dy = wanderers[i].y - wanderers[j].y;
-                        let dist = dx*dx + dy*dy;
-                        if (dist < 4000) { 
-                            ctx.strokeStyle = `rgba(255,255,255,${0.15 - dist/40000})`; 
-                            ctx.beginPath(); ctx.moveTo(wanderers[i].x, wanderers[i].y); ctx.lineTo(wanderers[j].x, wanderers[j].y); ctx.stroke();
-                        }
-                    }
-                }
+            // Nếu là CPU thì tô màu nền (tạo đuôi mờ)
+            if (currentEngine === 'cpu') {
+                ctx.fillStyle = 'rgba(5, 9, 20, 0.4)'; 
+                ctx.fillRect(0, 0, canvas2d.width, canvas2d.height);
+            } else {
+                // GPU thì clear 100% để tối đa tốc độ
+                renderer.clear();
             }
 
             for (let i = 0; i < particles.length; i++) {
-                particles[i].update();
-                particles[i].draw();
+                let p = particles[i];
+                p.updatePhysics(); // Não bộ tính toán vẫn chạy chung
+
+                if (currentEngine === 'cpu') {
+                    p.draw2D();
+                } else {
+                    // Xuất dữ liệu thẳng sang VRAM của máy
+                    positions[i * 3] = p.x;
+                    positions[i * 3 + 1] = canvas2d.height - p.y; // Đảo ngược Y cho chuẩn 3D
+                    sizes[i] = p.currentSize * 2.5 * window.devicePixelRatio; 
+                    colors[i * 3] = p.r / 255;
+                    colors[i * 3 + 1] = p.g / 255;
+                    colors[i * 3 + 2] = p.b / 255;
+                }
             }
+
+            // Gọi lệnh render GPU
+            if (currentEngine === 'gpu') {
+                gpuGeometry.setDrawRange(0, particles.length);
+                gpuGeometry.attributes.position.needsUpdate = true;
+                gpuGeometry.attributes.color.needsUpdate = true;
+                gpuGeometry.attributes.size.needsUpdate = true;
+                renderer.render(scene, camera);
+            }
+            
             requestAnimationFrame(animate);
         }
         
         requestAnimationFrame(animate);
 
-        // --- XỬ LÝ SỰ KIỆN INPUT HIỂN THỊ ---
+        // --- SỰ KIỆN CLICK ---
         document.querySelectorAll('.btn-emoji').forEach(btn => {
-            btn.addEventListener('click', e => {
-                Sound.init(); currentRenderState = { type: 'emoji', data: e.target.getAttribute('data-val') }; renderCurrentState();
-            });
+            btn.addEventListener('click', e => { currentRenderState = { type: 'emoji', data: e.target.getAttribute('data-val') }; renderCurrentState(); });
         });
         document.getElementById('text-input').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                Sound.init(); const text = this.value.trim(); if(!text) return;
-                currentRenderState = { type: 'text', data: text }; renderCurrentState(); this.value = ''; this.blur();
-            }
+            if (e.key === 'Enter') { const text = this.value.trim(); if(text){ currentRenderState = { type: 'text', data: text }; renderCurrentState(); this.value = ''; this.blur();} }
         });
         document.getElementById('image-upload').addEventListener('change', function(e) {
-            Sound.init(); const file = e.target.files[0]; if (!file) return; const reader = new FileReader();
+            const file = e.target.files[0]; if (!file) return; const reader = new FileReader();
             reader.onload = function(event) {
                 const img = new Image(); img.onload = function() { currentRenderState = { type: 'image', data: img }; renderCurrentState(); };
                 img.src = event.target.result;
